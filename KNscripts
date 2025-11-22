@@ -1,0 +1,425 @@
+loadstring([[
+repeat wait() until game:IsLoaded()
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local CoreGui = game:GetService("CoreGui")
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local ESPBoxHandles = {}
+local SavedFarmPos = nil
+local function notify(t, c, d) Rayfield:Notify({Title=t, Content=c, Duration=d or 2}) end
+
+local Window = Rayfield:CreateWindow({ Name = "KNscript HUB", Theme = "Amethyst" })
+local Tabs = {
+    Combate = Window:CreateTab("Combate",0),
+    Esp = Window:CreateTab("Esp",0),
+    Teleport = Window:CreateTab("Teleports",0),
+    Farms = Window:CreateTab("AutoFarms",0),
+    Op = Window:CreateTab("Opções",0),
+    Emp = Window:CreateTab("Empregos",0),
+    Cfg = Window:CreateTab("Config",0)
+}
+
+------------------------------------------------
+-- COMBATE
+------------------------------------------------
+local aimFOV,aimbotPCEnabled,aimlock,autoKickVida,limiteVida=120,false,false,false,10
+local aimbotTarget,lastTPd,aimbotMobile=false,nil,false
+local autoInventory=false; local autoRevistar=false
+Tabs.Combate:CreateToggle{Name="Aimbot PC (Mouse2)",CurrentValue=false,Flag="AimbotPC",Callback=function(v)aimbotPCEnabled=v end}
+Tabs.Combate:CreateToggle{Name="Aimbot Mobile (Toque)",CurrentValue=false,Flag="AimbotMob",Callback=function(v)aimbotMobile=v end}
+Tabs.Combate:CreateToggle{Name="Aimlock (Grudar Mira)",CurrentValue=false,Flag="aimLOCK",Callback=function(v)aimlock=v end}
+Tabs.Combate:CreateSlider{Name="FOV Aimbot",Range={30,360},Increment=5,CurrentValue=120,Flag="aimFov",Callback=function(v)aimFOV=v end}
+Tabs.Combate:CreateToggle{Name="Auto Roubar Inventário",CurrentValue=false,Flag="invAuto",Callback=function(v)autoInventory=v end}
+Tabs.Combate:CreateToggle{Name="Revistar Automático",CurrentValue=false,Flag="autoRev",Callback=function(v)autoRevistar=v end}
+Tabs.Combate:CreateToggle{Name="Teleporte p/ Kill",CurrentValue=false,Flag="tpkill",Callback=function(v)lastTPd=nil end}
+Tabs.Combate:CreateToggle{Name="Auto-Kick Vida",CurrentValue=false,Flag="autokick",Callback=function(v)autoKickVida=v end}
+Tabs.Combate:CreateSlider{Name="Limite de Vida (Kick)",Range={1,100},Increment=1,CurrentValue=10,Flag="limVida",Callback=function(v)limiteVida=v end}
+
+UserInputService.InputBegan:Connect(function(input,gp)
+    if aimbotPCEnabled and input.UserInputType==Enum.UserInputType.MouseButton2 then
+        player:SetAttribute("AimbotPCDown",true)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input,gp)
+    if aimbotPCEnabled and input.UserInputType==Enum.UserInputType.MouseButton2 then
+        player:SetAttribute("AimbotPCDown",false)
+    end
+end)
+RunService.RenderStepped:Connect(function()
+    local alive = player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0
+    -- Auto-kick vida
+    if autoKickVida and alive and player.Character.Humanoid.Health <= limiteVida then
+        notify("Auto-Kick","Vida menor que "..limiteVida..", desconectando em 2s.")
+        wait(2)
+        player:Kick("Auto-Kick: Saúde baixa")
+    end
+    if (aimbotPCEnabled or aimlock) and player:GetAttribute("AimbotPCDown") then
+        -- Aimbot: busca player mais próximo do centro
+        local closest, shortest=nil,math.huge
+        for _,plr in ipairs(Players:GetPlayers()) do
+            if plr ~= player and plr.Character and plr.Character:FindFirstChild("Head") then
+                local screenPos,onScreen = camera:WorldToViewportPoint(plr.Character.Head.Position)
+                if onScreen then
+                    local center=Vector2.new(camera.ViewportSize.X/2,camera.ViewportSize.Y/2)
+                    local dist=(Vector2.new(screenPos.X,screenPos.Y)-center).Magnitude
+                    if dist < shortest and dist <= aimFOV then
+                        shortest=dist
+                        closest=plr
+                    end
+                end
+            end
+        end
+        if closest and closest.Character and closest.Character:FindFirstChild("Head") then
+            aimbotTarget = closest
+            camera.CFrame = CFrame.new(camera.CFrame.Position, closest.Character.Head.Position)
+            -- Teleport p/ kill (se toggle, Mouse2)
+            if Tabs.Combate.Flags.tpkill and not lastTPd then
+                local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = closest.Character.Head.CFrame + Vector3.new(0,2,0) end
+                lastTPd = tick()
+                wait(0.5) lastTPd = nil
+            end
+        end
+    end
+end)
+
+------------------------------------------------
+-- ESP
+------------------------------------------------
+local espEnabled, espChams, espBox3D, espTag, espName, espDist = false,false,false,false,false,false
+local hitboxEnabled, hitboxScale = false,5
+Tabs.Esp:CreateToggle{Name="ESP Tag",CurrentValue=false,Flag="espTag",Callback=function(v) espTag=v end}
+Tabs.Esp:CreateToggle{Name="ESP Name",CurrentValue=false,Flag="espName",Callback=function(v) espName=v end}
+Tabs.Esp:CreateToggle{Name="ESP Distance",CurrentValue=false,Flag="espDist",Callback=function(v) espDist=v end}
+Tabs.Esp:CreateToggle{Name="ESP Chams",CurrentValue=false,Flag="espChams",Callback=function(v) espChams=v end}
+Tabs.Esp:CreateToggle{Name="Hitbox Expansiva",CurrentValue=false,Flag="hitbox",Callback=function(v) hitboxEnabled=v end}
+Tabs.Esp:CreateSlider{Name="Tamanho da Hitbox",Range={2,20},Increment=1,CurrentValue=5,Flag="hitboxTam",Callback=function(v)hitboxScale=v end}
+Tabs.Esp:CreateToggle{Name="ESP Box 3D",CurrentValue=false,Flag="esp3d",Callback=function(v) espBox3D=v end}
+
+RunService.RenderStepped:Connect(function()
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr~=player and plr.Character and plr.Character:FindFirstChild("Head") then
+            -- ESP TAG/NAME
+            if espTag or espName or espDist then
+                if not plr.Character.Head:FindFirstChild("ESPGui") then
+                    local gui = Instance.new("BillboardGui",plr.Character.Head)
+                    gui.Name = "ESPGui"
+                    gui.Size = UDim2.new(0,230,0,40) gui.AlwaysOnTop = true
+                    local lbl=Instance.new("TextLabel",gui)
+                    lbl.Size=UDim2.new(1,0,1,0) lbl.BackgroundTransparency=1 lbl.Font=Enum.Font.GothamBold lbl.TextSize=15 lbl.TextColor3=Color3.fromRGB(60,200,255)
+                    lbl.Name="Info"
+                end
+                local info = plr.Character.Head:FindFirstChild("ESPGui").Info
+                local dist = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and math.floor((plr.Character.Head.Position-player.Character.HumanoidRootPart.Position).Magnitude) or "?"
+                local t = (espName and plr.Name or "")..(espName and espTag and " | " or "")
+                t = t..(espTag and plr.DisplayName or "")..((espTag or espName) and espDist and " | " or "")
+                t = t..(espDist and (dist.."m") or "")
+                info.Text = t
+                info.TextColor3 = espChams and Color3.fromRGB(math.random(0,255),math.random(0,255),math.random(0,255)) or Color3.fromRGB(60,200,255)
+                plr.Character.Head.ESPGui.Enabled = true
+            elseif plr.Character.Head:FindFirstChild("ESPGui") then
+                plr.Character.Head.ESPGui.Enabled = false
+            end
+            -- ESP CHAMS
+            if espChams then
+                for _,d in ipairs(plr.Character:GetChildren()) do
+                    if d:IsA("BasePart") then
+                        d.Color = Color3.fromRGB(math.random(50,255), math.random(50,255), math.random(50,255))
+                        d.Material = Enum.Material.ForceField
+                        d.Transparency = 0.3
+                    end
+                end
+            end
+            -- HITBOX
+            if hitboxEnabled then
+                local head = plr.Character:FindFirstChild("Head")
+                if head then head.Size = Vector3.new(hitboxScale, hitboxScale, hitboxScale) head.CanCollide = false end
+            else
+                local head = plr.Character:FindFirstChild("Head")
+                if head then head.Size = Vector3.new(2,1,1) head.CanCollide = false end
+            end
+            -- ESP Box 3D
+            if espBox3D then
+                if not ESPBoxHandles[plr] then
+                    local box = Instance.new("BoxHandleAdornment")
+                    box.Adornee = plr.Character.HumanoidRootPart
+                    box.Parent = CoreGui
+                    box.AlwaysOnTop = true
+                    box.ZIndex = 10
+                    box.Size = Vector3.new(4,6,2)
+                    box.Transparency = 0.75
+                    box.Color3 = Color3.fromRGB(255,200,20)
+                    ESPBoxHandles[plr] = box
+                end
+            else
+                if ESPBoxHandles[plr] then ESPBoxHandles[plr]:Destroy() ESPBoxHandles[plr]=nil end
+            end
+        end
+    end
+end)
+
+--------------------------------------------------------
+-- Autofarm (funções reais, personalize conforme server)
+--------------------------------------------------------
+local afGari,afMin,afFaz,afPec,afGas,afClick = false,false,false,false,false,false
+Tabs.Farms:CreateToggle{Name="Auto Farm Gari",CurrentValue=false,Flag="AutoFarmGari",Callback=function(v)
+    afGari=v
+    if v then
+        spawn(function()
+            while afGari do
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = CFrame.new(-518.67,3.16,-1.16) end
+                wait(3)
+            end
+        end)
+    end
+end}
+Tabs.Farms:CreateToggle{Name="Auto Farm Mineração",CurrentValue=false,Flag="AutoFarmMin",Callback=function(v)
+    afMin=v
+    if v then
+        spawn(function()
+            while afMin do
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = CFrame.new(201.93,2.76,145.50) end
+                wait(3)
+            end
+        end)
+    end
+end}
+Tabs.Farms:CreateToggle{Name="Auto Farm Fazenda",CurrentValue=false,Flag="AutoFarmFazenda",Callback=function(v)
+    afFaz=v
+    if v then
+        spawn(function()
+            while afFaz do
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = CFrame.new(817.24,3.26,-87.31) end
+                wait(3)
+            end
+        end)
+    end
+end}
+Tabs.Farms:CreateToggle{Name="Auto Farm Gás",CurrentValue=false,Flag="AutoFarmGas",Callback=function(v)
+    afGas=v
+    if v then
+        spawn(function()
+            while afGas do
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = CFrame.new(-469.95,3.25,-54.39) end
+                wait(3)
+            end
+        end)
+    end
+end}
+Tabs.Farms:CreateToggle{Name="Auto Click",CurrentValue=false,Flag="AutoClick",Callback=function(v)
+    afClick=v
+    if v then
+        spawn(function()
+            while afClick do
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    for _,inst in ipairs(workspace:GetDescendants()) do
+                        if inst:IsA("ProximityPrompt") then pcall(function() fireproximityprompt(inst) end) end
+                    end
+                end
+                wait(1.5)
+            end
+        end)
+    end
+end}
+Tabs.Farms:CreateToggle{Name="Auto Farm Peças",CurrentValue=false,Flag="AutoFarmPecas",Callback=function(v)
+    afPec=v
+    if v then
+        spawn(function()
+            while afPec do
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") and SavedFarmPos then char.HumanoidRootPart.CFrame = SavedFarmPos end
+                wait(2)
+            end
+        end)
+    end
+end}
+Tabs.Farms:CreateButton{Name="Salvar Local de Farm",Callback=function()
+    local char = player.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        SavedFarmPos = char.HumanoidRootPart.CFrame
+        notify("Farm","Posição salva!")
+    end
+end}
+Tabs.Farms:CreateToggle{Name="Injetar Farms",CurrentValue=false,Flag="InjFarm",Callback=function(v) end}
+
+--------------------------------------------------------
+-- TELEPORTS
+--------------------------------------------------------
+for _,loc in ipairs({
+    {Name="Praça",CFrame=CFrame.new(-291.579559,3.26,342.192535)},
+    {Name="Gás",CFrame=CFrame.new(-469.95,3.25,-54.39)},
+    {Name="HP",CFrame=CFrame.new(-543.43,3.26,645.16)},
+    {Name="Tabacaria",CFrame=CFrame.new(-83.11,13.14,74.70)},
+    {Name="Garagem",CFrame=CFrame.new(-466.87,7.64,350.24)},
+    {Name="Mineração",CFrame=CFrame.new(201.93,2.76,145.50)},
+    {Name="Fazenda",CFrame=CFrame.new(817.24,3.26,-87.31)},
+    {Name="GasCan",CFrame=CFrame.new(-469.95,3.25,-54.39)}
+}) do
+    Tabs.Teleport:CreateButton{Name=loc.Name,Callback=function()
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.CFrame = loc.CFrame
+            notify("Teleport","Teleport para "..loc.Name)
+        end
+    end}
+end
+
+--------------------------------------------------------
+-- PAINEL FLY
+--------------------------------------------------------
+do
+    local flyPanel = Instance.new("ScreenGui", CoreGui)
+    flyPanel.Name = "FlyPanelGui"
+    flyPanel.Enabled = false
+    local flyFrame = Instance.new("Frame", flyPanel)
+    flyFrame.Position = UDim2.new(1, -185, 1, -160)
+    flyFrame.Size = UDim2.new(0, 170, 0, 95)
+    flyFrame.BackgroundColor3 = Color3.fromRGB(30,30,35)
+    flyFrame.Active = true; flyFrame.Draggable = true
+
+    local label = Instance.new("TextLabel", flyFrame)
+    label.Text = "KNscript Fly"
+    label.Size = UDim2.new(1,0,0,24)
+    label.Position = UDim2.new(0,0,0,8)
+    label.Font = Enum.Font.GothamBold
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255,255,240)
+    label.TextSize = 16
+
+    local flyBtn = Instance.new("TextButton", flyFrame)
+    flyBtn.Size = UDim2.new(0.7,0,0,30)
+    flyBtn.Position = UDim2.new(0.15,0,0,38)
+    flyBtn.BackgroundColor3 = Color3.fromRGB(65,130,220)
+    flyBtn.TextColor3 = Color3.new(1,1,1)
+    flyBtn.Font = Enum.Font.GothamBlack
+    flyBtn.TextSize = 17
+    flyBtn.Text = "Fly: OFF"
+    flyBtn.BorderSizePixel = 0
+
+    local plusBtn = Instance.new("TextButton", flyFrame)
+    plusBtn.Size = UDim2.new(0.20,0,0,28)
+    plusBtn.Position = UDim2.new(1,-36,1,-32)
+    plusBtn.Text = "+"
+    plusBtn.TextColor3 = Color3.new(1,1,1)
+    plusBtn.BackgroundColor3 = Color3.fromRGB(40,90,180)
+    plusBtn.Font = Enum.Font.GothamBlack
+    plusBtn.TextSize = 20
+
+    local minusBtn = Instance.new("TextButton", flyFrame)
+    minusBtn.Size = UDim2.new(0.20,0,0,28)
+    minusBtn.Position = UDim2.new(0,6,1,-32)
+    minusBtn.Text = "-"
+    minusBtn.TextColor3 = Color3.new(1,1,1)
+    minusBtn.BackgroundColor3 = Color3.fromRGB(40,90,180)
+    minusBtn.Font = Enum.Font.GothamBlack
+    minusBtn.TextSize = 20
+
+    local speedLbl = Instance.new("TextLabel", flyFrame)
+    speedLbl.Size = UDim2.new(0.58,0,0,28)
+    speedLbl.Position = UDim2.new(0.21,0,1,-32)
+    speedLbl.BackgroundTransparency = 1
+    speedLbl.TextColor3 = Color3.fromRGB(200,220,255)
+    speedLbl.Font = Enum.Font.Gotham
+    speedLbl.TextSize = 14
+    speedLbl.Text = "Speed: 50"
+    local flyOn,flySpeed,flyVel,flyGyro,flyConn = false,50,nil,nil,nil
+    local flyKeys = {W=false,A=false,S=false,D=false,Space=false,LeftControl=false}
+    local function updatePanel()
+        flyBtn.Text = flyOn and "Fly: ON" or "Fly: OFF"
+        speedLbl.Text = "Speed: "..flySpeed
+    end
+    UserInputService.InputBegan:Connect(function(input,gp)
+        if input.KeyCode==Enum.KeyCode.W then flyKeys.W=true end
+        if input.KeyCode==Enum.KeyCode.A then flyKeys.A=true end
+        if input.KeyCode==Enum.KeyCode.S then flyKeys.S=true end
+        if input.KeyCode==Enum.KeyCode.D then flyKeys.D=true end
+        if input.KeyCode==Enum.KeyCode.Space then flyKeys.Space=true end
+        if input.KeyCode==Enum.KeyCode.LeftControl then flyKeys.LeftControl=true end end)
+    UserInputService.InputEnded:Connect(function(input,gp)
+        if input.KeyCode==Enum.KeyCode.W then flyKeys.W=false end
+        if input.KeyCode==Enum.KeyCode.A then flyKeys.A=false end
+        if input.KeyCode==Enum.KeyCode.S then flyKeys.S=false end
+        if input.KeyCode==Enum.KeyCode.D then flyKeys.D=false end
+        if input.KeyCode==Enum.KeyCode.Space then flyKeys.Space=false end
+        if input.KeyCode==Enum.KeyCode.LeftControl then flyKeys.LeftControl=false end end)
+    plusBtn.MouseButton1Click:Connect(function() flySpeed = math.min(flySpeed+10,300) updatePanel() end)
+    minusBtn.MouseButton1Click:Connect(function() flySpeed = math.max(flySpeed-10,10) updatePanel() end)
+    flyBtn.MouseButton1Click:Connect(function()
+        flyOn = not flyOn
+        updatePanel()
+        if flyOn then
+            if flyConn then flyConn:Disconnect() end
+            flyConn = RunService.RenderStepped:Connect(function()
+                local char=player.Character; local hrp=char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                if not flyVel then
+                    flyVel = Instance.new("BodyVelocity") flyVel.MaxForce = Vector3.new(1,1,1)*1e6 flyVel.P = 4500 flyVel.Parent = hrp
+                    flyGyro = Instance.new("BodyGyro") flyGyro.P = 5000 flyGyro.MaxTorque = Vector3.new(1,1,1)*1e6 flyGyro.Parent = hrp
+                end
+                local cf = camera.CFrame
+                local move = Vector3.new()
+                if flyKeys.W then move = move + cf.LookVector end
+                if flyKeys.S then move = move - cf.LookVector end
+                if flyKeys.D then move = move + cf.RightVector end
+                if flyKeys.A then move = move - cf.RightVector end
+                if flyKeys.Space then move = move + Vector3.new(0,1,0) end
+                if flyKeys.LeftControl then move = move - Vector3.new(0,1,0) end
+                if move.Magnitude > 0.01 then flyVel.Velocity = move.Unit * flySpeed else flyVel.Velocity = Vector3.new() end
+                flyGyro.CFrame = CFrame.new(hrp.Position, hrp.Position+camera.CFrame.LookVector)
+                local hum = char:FindFirstChildOfClass("Humanoid") if hum then hum.PlatformStand=true end
+            end)
+        else
+            if flyConn then flyConn:Disconnect() flyConn=nil end
+            if flyVel then flyVel:Destroy() flyVel=nil end
+            if flyGyro then flyGyro:Destroy() flyGyro=nil end
+            local char=player.Character
+            local hum=char and char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.PlatformStand=false end
+        end
+    end)
+    Tabs.Op:CreateToggle{
+        Name="Fly GUI",CurrentValue=false,Flag="FlyGuiOpen",
+        Callback = function(val) flyPanel.Enabled = val end
+    }
+end
+
+---------------------------------------------------
+-- NoClip SEGURO (funcional 100%)
+---------------------------------------------------
+local noclip = false; local noclipCon = nil
+Tabs.Op:CreateToggle{
+    Name="No Clip",
+    CurrentValue=false,
+    Flag="NoClip",
+    Callback=function(val)
+        noclip = val
+        if noclip and not noclipCon then
+            noclipCon = RunService.Stepped:Connect(function()
+                local char = player.Character
+                if noclip and char then
+                    for _,part in pairs(char:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        elseif noclipCon and not noclip then
+            noclipCon:Disconnect() noclipCon = nil
+        end
+    end
+}
+Tabs.Op:CreateToggle{Name="Anti-Staff",CurrentValue=false,Flag="AntiStaff",Callback=function(v) end}
+Tabs.Emp:CreateButton{Name="Selecionar Emprego",Callback=function()notify("Empregos","Função exemplo.")end}
+Tabs.Cfg:CreateButton{Name="Exemplo Configuração",Callback=function()end}
+]])()
